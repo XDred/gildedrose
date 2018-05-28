@@ -49,6 +49,18 @@ class GildedRose
         $this->items = $items;
     }
 
+    private function add_quality(&$cur_quality, $add_quality){
+        if ($add_quality != 0) { // если изменение качества не равно нулю
+            $cur_quality = $cur_quality + $add_quality; // добавляем качество
+            if ($cur_quality < 0) {
+                $cur_quality = 0;
+            }
+            if ($cur_quality > 50) {
+                $cur_quality = 50;
+            }
+        }
+    }
+
     public function update_quality()
     {
         foreach ($this->items as $item) {
@@ -67,15 +79,7 @@ class GildedRose
                 if ($cur_setting['expired'] === '=0') { // если в настройках указано что просрочку сразу устанавливаем в 0
                     $item->quality = 0; // ставим 0
                 } else {
-                    if ($cur_setting['expired'] != 0) { // если изменение качества не равно нулю
-                        $item->quality = $item->quality + $cur_setting['expired']; // добавляем качество
-                        if ($item->quality < 0) {
-                            $item->quality = 0;
-                        }
-                        if ($item->quality > 50) {
-                            $item->quality = 50;
-                        }
-                    }
+                    $this->add_quality($item->quality, $cur_setting['expired']);
                 }
             } else { // соответственно, если продукт не просрочен
                 if (isset($cur_setting['days'])) { // проверяем, есть ли у него особый параметр
@@ -84,29 +88,12 @@ class GildedRose
                     rsort($days); // сортируем, чтобы всегда было правильно
                     foreach ($days as $day) {
                         if ($item->sell_in < $day) {
-                            $cur_quality = $cur_setting['days'][$day];
-                        }
-                        // и ищем нужную настройку
+                            $cur_quality = $cur_setting['days'][$day];// и ищем нужную настройку
+                        }                        
                     }
-                    if ($cur_quality != 0) { // если изменение качества не равно нулю
-                        $item->quality = $item->quality + $cur_quality; // добавляем качество
-                        if ($item->quality < 0) {
-                            $item->quality = 0;
-                        }
-                        if ($item->quality > 50) {
-                            $item->quality = 50;
-                        }
-                    }
+                    $this->add_quality($item->quality, $cur_quality);    
                 } else { // если нет особого параметра
-                    if ($cur_setting['quality'] != 0) { // если изменение качества не равно нулю
-                        $item->quality = $item->quality + $cur_setting['quality']; // добавляем качество
-                        if ($item->quality < 0) {
-                            $item->quality = 0;
-                        }
-                        if ($item->quality > 50) {
-                            $item->quality = 50;
-                        }
-                    }
+                    $this->add_quality($item->quality, $cur_setting['quality']);
                 }
             } // готово, мы великолепны
         }
