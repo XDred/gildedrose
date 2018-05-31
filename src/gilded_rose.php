@@ -1,106 +1,36 @@
 <?php
 
-/*
- *   Нужно было добавить возможность легко добавлять новые категории товаров со своими свойствами
- *
- *   для этого я добавил 2 массива - по умолчанию и настройки
- */
+/*  Возможно я неверно понял допустимые пределы изменения кода
+*   Возможно можно было сделать лучше    
+*   Но я подумал, что нужно сделать так, чтобы даже файл texttest_fixture.php не нужно было менять
+*   Получилась полная совместимость со старыми версиями
+*   
+*   Новые варианты добавляются путём добавления классов
+*   Фабрика автоматически находит все нужные классы и применяет их к соответствующим предметам
+*/
+
 
 class GildedRose
 {
-
     private $items;
 
-    private $default = array( // массив по умолчанию - применяется если не предмет не найден в массиве настроек
-        'sellin'  => -1, // увеличение параметра sell_in за шаг
-        'quality' => -1, // увеличение параметра quality за шаг
-        'expired' => -2, // увеличение параметра quality за шаг, если продукт просрочен
-    );
-
-    private $settings = array( // массив настроек - описывает параметры предметов
-        'Sulfuras, Hand of Ragnaros' => array( // сульфурас легендарный - у него ничего не меняется
-            'sellin'  => 0,
-            'quality' => 0,
-            'expired' => 0,
-        ),
-        'Aged Brie'                  => array( // бри прибавляет качества со временем
-            'sellin'  => -1,
-            'quality' => 1,
-            'expired' => 2,
-        ),
-        'Conjured'                   => array( // призванные товары теряют качество в 2 раза сильнее обычных
-            'sellin'  => -1,
-            'quality' => -2,
-            'expired' => -4,
-        ),
-        'Backstage passes'           => array(
-            'sellin'  => -1,
-            'quality' => 1,
-            'expired' => '=0', // установить quality сразу в 0 если продукт просрочен
-            'days'    => array( // особый параметр, отвечает за изменение качества в зависимости от оставшихся дней
-                10 => 2, // если меньше 10 то +2
-                5  => 3, // если меньше 5 то +3
-            ), // впринципе можно было объеденить с expired но я подумал что так будет лучше
-        ),
-    );
-
-    public function __construct($items)
+    public function __construct(&$items) // я не понял как это работало изначально без ссылки
     {
-        $this->items = $items;
+        foreach($items as &$item){              // для каждого предмета
+            $item = TypesFactory::build($item); // строим подходящий класс
+        } // возможно я не в курсе какой то важной фичи, как унаследовать класси оперировать уже новым в остальном коде
+        $this->items = $items;                  // и записываем их всех в массив
     }
 
-    private function add_quality(&$cur_quality, $add_quality){
-        if ($add_quality != 0) { // если изменение качества не равно нулю
-            $cur_quality = $cur_quality + $add_quality; // добавляем качество
-            if ($cur_quality < 0) {
-                $cur_quality = 0;
-            }
-            if ($cur_quality > 50) {
-                $cur_quality = 50;
-            }
-        }
-    }
-
-    public function update_quality()
+    public function update_quality()    // стандартная функция, название не трогал чтоб сохранить совместимость
     {
-        foreach ($this->items as $item) {
-            $settings    = array_keys($this->settings); // берём ключи массива настроек
-            $cur_setting = $this->default; // записываем настройку по умолчанию в качестве текущей
-            foreach ($settings as $setting) {
-                if (strpos($item->name, $setting) !== false) { // если название предмета содержит ключ из массива
-                    $cur_setting = $this->settings[$setting]; // то запоминаем эту настройку в качестве текущей
-                    break; // и выходим из цикла
-                }
-            }
-
-            $item->sell_in = $item->sell_in + $cur_setting['sellin']; // уменьшаем количество оставшихся дней на столько сколько указано в настройках
-
-            if ($item->sell_in < 0) { // если продукт просрочен
-                if ($cur_setting['expired'] === '=0') { // если в настройках указано что просрочку сразу устанавливаем в 0
-                    $item->quality = 0; // ставим 0
-                } else {
-                    $this->add_quality($item->quality, $cur_setting['expired']);
-                }
-            } else { // соответственно, если продукт не просрочен
-                if (isset($cur_setting['days'])) { // проверяем, есть ли у него особый параметр
-                    $days        = array_keys($cur_setting['days']); //берём дни
-                    $cur_quality = $cur_setting['quality']; // запоминаем текущую настройку без учёта дней как настройку по умолчанию
-                    rsort($days); // сортируем, чтобы всегда было правильно
-                    foreach ($days as $day) {
-                        if ($item->sell_in < $day) {
-                            $cur_quality = $cur_setting['days'][$day];// и ищем нужную настройку
-                        }                        
-                    }
-                    $this->add_quality($item->quality, $cur_quality);    
-                } else { // если нет особого параметра
-                    $this->add_quality($item->quality, $cur_setting['quality']);
-                }
-            } // готово, мы великолепны
+        foreach ($this->items as $item) {   // тупо для всех предметов 
+            $item->updateQuality();         // вызываем метод
         }
     }
 }
 
-class Item
+class Item // стандартный класс предмета, так же не трогал
 {
 
     public $name;
@@ -119,4 +49,115 @@ class Item
         return "{$this->name}, {$this->sell_in}, {$this->quality}";
     }
 
+}
+
+// а вот здесь начинаются главные изменения
+class ItemTypeDefault extends Item // дефолтный класс, расширяет функционал стандартного
+{
+    protected function addQuality($add_quality) // функция добавления качества
+    {
+        if ($add_quality != 0) { // если изменение качества не равно нулю
+            $this->quality = $this->quality + $add_quality; // добавляем качество
+            if ($this->quality < 0) {
+                $this->quality = 0; // не выходим за пределы
+            }
+            if ($this->quality > 50) {
+                $this->quality = 50;
+            }
+        }
+    }
+
+    public function updateQuality() // функция апдейта качества
+    {
+        $this->sell_in = $this->sell_in - 1; // уменьшаем количество оставшихся дней
+
+        if ($this->sell_in < 0) { // если просрочка
+            $this->addQuality(-2); // уменьшаем качество в 2 раза больше
+        } else {
+            $this->addQuality(-1); // просто уменьшаем качество
+        }
+
+    }
+}
+
+class ItemTypeSulfuras extends ItemTypeDefault // класс для сульфураса
+{
+    public static $type_name = "Sulfuras, Hand of Ragnaros"; // строка, по которой ищется подходящий класс
+
+    public function updateQuality() // переопределяем дефолтный метод
+    {
+        // nothing to do here ...
+    }
+}
+
+class ItemTypeAgedBrie extends ItemTypeDefault
+{
+
+    public static $type_name = "Aged Brie";
+
+    public function updateQuality() // тут всё уже как обычно
+    {
+        $this->sell_in = $this->sell_in - 1;
+
+        if ($this->sell_in < 0) {
+            $this->addQuality(2); // так как это aged brie, увеличиваем качество
+        } else {
+            $this->addQuality(1);
+        }
+    }
+
+}
+
+class ItemTypeConjured extends ItemTypeDefault
+{
+
+    public static $type_name = "Conjured";
+
+    public function updateQuality()
+    {
+        $this->sell_in = $this->sell_in - 1;
+
+        if ($this->sell_in < 0) {
+            $this->addQuality(-4); // призванные предметы ломаются в 2 раза быстрее
+        } else {
+            $this->addQuality(-2);
+        }
+    }
+
+}
+
+class ItemTypeBackstagePasses extends ItemTypeDefault
+{
+
+    public static $type_name = "Backstage passes";
+
+    public function updateQuality()
+    {
+        $this->sell_in = $this->sell_in - 1;
+
+        if ($this->sell_in < 0) { // а вот здесь не как обычно, потому что у билетов своя логика
+            $this->quality = 0;
+        } elseif ($this->sell_in < 5) {
+            $this->addQuality(3);
+        } elseif ($this->sell_in < 10) {
+            $this->addQuality(2);
+        } else {
+            $this->addQuality(1);
+        }
+    }
+}
+
+
+class TypesFactory{ // ну и собственно фабричный метод
+    public static function build(Item $item){
+        $classes = get_declared_classes();
+        foreach($classes as $class){            // возможно можно было и лучше организовать поиск классов среди всей кучи
+            if((strpos($class,"ItemType")!== false) && isset($class::$type_name)){ // но, как есть так есть
+                if(strpos($item->name,$class::$type_name) !== false){              // вобщем, тут ищется класс, проверяется
+                    return new $class($item->name, $item->sell_in, $item->quality); // и возвращается если всё хорошо
+                }
+            }
+        }
+        return new ItemTypeDefault($item->name, $item->sell_in, $item->quality); // если других вариантов нет то возвращается дефолтный
+    }
 }
